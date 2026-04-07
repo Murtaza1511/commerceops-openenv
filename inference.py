@@ -15,6 +15,13 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _get_env_with_default(name: str, default: str) -> str:
+    value = os.getenv(name, default).strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
 def _log_start(task: Dict) -> None:
     payload = {
         "task_id": task["id"],
@@ -134,10 +141,14 @@ def _choose_action(client: Any, model_name: str, task: Dict, observation: Observ
 
 
 def main() -> None:
-    api_base_url = _require_env("API_BASE_URL")
-    model_name = _require_env("MODEL_NAME")
+    api_base_url = _get_env_with_default("API_BASE_URL", "https://api.openai.com/v1")
+    model_name = _get_env_with_default("MODEL_NAME", "gpt-4.1-mini")
     hf_token = _require_env("HF_TOKEN")
+    local_image_name = os.getenv("LOCAL_IMAGE_NAME", "").strip()
     env_base_url = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860").strip()
+
+    # Optional variable included for compatibility with the published checklist.
+    _ = local_image_name
 
     try:
         from openai import OpenAI
