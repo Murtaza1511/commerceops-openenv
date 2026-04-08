@@ -1,6 +1,13 @@
+from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval
+
+
+def _clamp_task_score(score):
+    return clamp_open_unit_interval(score)
+
+
 def grade_task(state, task):
     if state is None:
-        return 0.01
+        return MIN_OPEN_SCORE
 
     weighted_score = 0.0
     weight_total = 0.0
@@ -36,8 +43,7 @@ def grade_task(state, task):
     add_component(0.05, efficient)
 
     if weight_total == 0:
-        return 0.01
+        return MIN_OPEN_SCORE
 
     score = weighted_score / weight_total
-    bounded_score = min(max(score, 0.01), 0.99)
-    return round(bounded_score, 2)
+    return _clamp_task_score(score)

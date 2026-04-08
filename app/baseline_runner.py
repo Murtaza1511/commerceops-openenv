@@ -7,6 +7,7 @@ from app.env.environment import CustomerSupportEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action, Observation
+from app.scoring import average_open_scores, clamp_open_unit_interval
 
 
 def choose_action(task: Dict, observation: Observation, step_count: int) -> Dict:
@@ -123,7 +124,7 @@ def run_task_http(task: Dict, base_url: str, use_openai: bool = False) -> Dict:
         "task_id": task["id"],
         "difficulty": task["difficulty"],
         "rewards": rewards,
-        "score": graded["score"],
+        "score": clamp_open_unit_interval(float(graded["score"])),
         "steps": step_count,
     }
 
@@ -132,7 +133,7 @@ def run_all_tasks_http(base_url: str, use_openai: bool = False) -> Dict:
     tasks_payload = requests.get(f"{base_url}/tasks", timeout=30).json()
     tasks = tasks_payload["tasks"] if isinstance(tasks_payload, dict) else tasks_payload
     results = [run_task_http(task, base_url, use_openai=use_openai) for task in tasks]
-    average_score = round(sum(item["score"] for item in results) / len(results), 2)
+    average_score = average_open_scores([item["score"] for item in results])
     return {"results": results, "average_score": average_score}
 
 
@@ -158,10 +159,10 @@ def run_all_tasks_local() -> Dict:
                 "task_id": task["id"],
                 "difficulty": task["difficulty"],
                 "rewards": rewards,
-                "score": grade_task(env.state(), task),
+                "score": clamp_open_unit_interval(grade_task(env.state(), task)),
                 "steps": step_count,
             }
         )
 
-    average_score = round(sum(item["score"] for item in results) / len(results), 2)
+    average_score = average_open_scores([item["score"] for item in results])
     return {"results": results, "average_score": average_score}

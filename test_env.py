@@ -1,7 +1,7 @@
 import unittest
 
 from app.env.environment import CustomerSupportEnv
-from app.env.grader import grade_task
+from app.env.grader import _clamp_task_score, grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
 
@@ -98,6 +98,12 @@ class EnvironmentTests(unittest.TestCase):
             score = grade_task(self.env.state(), task)
             self.assertGreater(score, 0.0)
             self.assertLess(score, 1.0)
+
+    def test_task_score_clamp_stays_strictly_inside_open_interval(self):
+        self.assertEqual(_clamp_task_score(0.0), 0.01)
+        self.assertEqual(_clamp_task_score(1.0), 0.99)
+        self.assertEqual(_clamp_task_score(0.994), 0.99)
+        self.assertEqual(_clamp_task_score(0.004), 0.01)
 
 
 if __name__ == "__main__":

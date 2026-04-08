@@ -49,6 +49,11 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertIn("results", summary)
         self.assertIn("average_score", summary)
         self.assertEqual(len(summary["results"]), 3)
+        self.assertGreater(summary["average_score"], 0.0)
+        self.assertLess(summary["average_score"], 1.0)
+        for item in summary["results"]:
+            self.assertGreater(item["score"], 0.0)
+            self.assertLess(item["score"], 1.0)
         self.assertIsNotNone(env.state())
 
 

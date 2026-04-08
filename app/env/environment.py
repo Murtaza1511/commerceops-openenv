@@ -2,6 +2,7 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 from app.models.schemas import Action, Observation, Reward, State
+from app.scoring import clamp_closed_unit_interval
 
 
 class CustomerSupportEnv:
@@ -112,7 +113,7 @@ class CustomerSupportEnv:
         return observation, Reward(score=normalized_reward), done, info
 
     def _normalize_reward(self, reward: float) -> float:
-        return round(min(max(reward, 0.0), 1.0), 2)
+        return clamp_closed_unit_interval(reward)
 
     def _handle_classify(self, action: Action) -> Tuple[float, bool]:
         state = self.current_state

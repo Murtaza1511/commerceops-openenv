@@ -170,7 +170,8 @@ Before submission, also verify:
 - `/health` returns success
 - `/tasks` returns three tasks and the action schema
 - `inference.py` completes end-to-end
-- rewards and final scores stay in the `0.0` to `1.0` range
+- step rewards stay in the closed range `0.0` to `1.0`
+- final task scores and aggregate score stay strictly inside `(0, 1)`
 
 ## Docker
 

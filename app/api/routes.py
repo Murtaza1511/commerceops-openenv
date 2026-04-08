@@ -7,6 +7,7 @@ from app.env.environment import CustomerSupportEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
+from app.scoring import clamp_open_unit_interval
 
 router = APIRouter()
 env = CustomerSupportEnv()
@@ -99,7 +100,7 @@ def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
 
     return {
         "task_id": task_id,
-        "score": grade_task(state, task),
+        "score": clamp_open_unit_interval(grade_task(state, task)),
     }
 
 

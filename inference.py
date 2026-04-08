@@ -6,6 +6,7 @@ import requests
 
 from app.baseline_runner import choose_action
 from app.models.schemas import Action, Observation
+from app.scoring import clamp_open_unit_interval
 
 
 def _require_env(name: str) -> str:
@@ -45,7 +46,7 @@ def _log_end(result: Dict) -> None:
         "task_id": result["task_id"],
         "difficulty": result["difficulty"],
         "steps": result["steps"],
-        "score": result["score"],
+        "score": clamp_open_unit_interval(float(result["score"])),
         "rewards": result["rewards"],
     }
     print(f"[END] {json.dumps(payload, sort_keys=False)}", flush=True)
@@ -181,7 +182,7 @@ def main() -> None:
                 "task_id": task["id"],
                 "difficulty": task["difficulty"],
                 "steps": step_count,
-                "score": graded["score"],
+                "score": clamp_open_unit_interval(float(graded["score"])),
                 "rewards": rewards,
             }
         )
