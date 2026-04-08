@@ -1,6 +1,6 @@
 def grade_task(state, task):
     if state is None:
-        return 0.0
+        return 0.01
 
     weighted_score = 0.0
     weight_total = 0.0
@@ -36,7 +36,8 @@ def grade_task(state, task):
     add_component(0.05, efficient)
 
     if weight_total == 0:
-        return 0.0
+        return 0.01
 
     score = weighted_score / weight_total
-    return round(min(score, 1.0), 2)
+    bounded_score = min(max(score, 0.01), 0.99)
+    return round(bounded_score, 2)
