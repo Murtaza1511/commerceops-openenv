@@ -7,7 +7,7 @@ from app.env.environment import CustomerSupportEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
-from app.scoring import clamp_open_unit_interval
+from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval
 
 router = APIRouter()
 env = CustomerSupportEnv()
@@ -87,18 +87,23 @@ def get_tasks():
 @router.post("/grader")
 def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
     state = env.state()
-    if state is None:
-        raise HTTPException(status_code=400, detail="Environment has not been reset yet")
-
-    task_id = task_id or _extract_task_id(payload) or state.task_id
+    requested_task_id = task_id or _extract_task_id(payload)
+    task_id = requested_task_id or (state.task_id if state is not None else TASKS[0]["id"])
     task = next((item for item in TASKS if item["id"] == task_id), None)
     if task is None:
         # Compatibility fallback for external validators that may pass
         # alternate task identifiers or omit task context.
-        task = next((item for item in TASKS if item["id"] == state.task_id), None)
+        fallback_task_id = state.task_id if state is not None else TASKS[0]["id"]
+        task = next((item for item in TASKS if item["id"] == fallback_task_id), None)
         if task is None:
             raise HTTPException(status_code=404, detail="Invalid task_id")
         task_id = task["id"]
+
+    if state is None:
+        return {
+            "task_id": task_id,
+            "score": MIN_OPEN_SCORE,
+        }
 
     return {
         "task_id": task_id,

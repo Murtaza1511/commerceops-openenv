@@ -59,6 +59,15 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertGreater(result["score"], 0.0)
         self.assertLess(result["score"], 1.0)
 
+    def test_grader_before_reset_still_returns_in_range_score(self):
+        env.current_state = None
+        env.current_task = None
+
+        result = grader(payload={"task_id": "task_1"})
+        self.assertEqual(result["task_id"], "task_1")
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
+
     def test_baseline_handler_returns_structured_summary(self):
         summary = run_baseline()
 
