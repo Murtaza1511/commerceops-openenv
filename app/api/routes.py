@@ -37,7 +37,7 @@ def _extract_task_id(payload: Any) -> Optional[str]:
     if isinstance(payload, str):
         return payload
     if isinstance(payload, dict):
-        for key in ("task_id", "id"):
+        for key in ("task_id", "id", "task", "taskId"):
             value = payload.get(key)
             if isinstance(value, str):
                 return value
@@ -86,17 +86,19 @@ def get_tasks():
 
 @router.post("/grader")
 def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
-    task_id = task_id or _extract_task_id(payload)
-    if task_id is None:
-        raise HTTPException(status_code=400, detail="task_id is required")
-
-    task = next((item for item in TASKS if item["id"] == task_id), None)
-    if not task:
-        raise HTTPException(status_code=404, detail="Invalid task_id")
-
     state = env.state()
     if state is None:
         raise HTTPException(status_code=400, detail="Environment has not been reset yet")
+
+    task_id = task_id or _extract_task_id(payload) or state.task_id
+    task = next((item for item in TASKS if item["id"] == task_id), None)
+    if task is None:
+        # Compatibility fallback for external validators that may pass
+        # alternate task identifiers or omit task context.
+        task = next((item for item in TASKS if item["id"] == state.task_id), None)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Invalid task_id")
+        task_id = task["id"]
 
     return {
         "task_id": task_id,

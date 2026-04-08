@@ -42,6 +42,22 @@ class ApiHandlerTests(unittest.TestCase):
 
         result = grader("task_1")
         self.assertGreaterEqual(result["score"], 0.9)
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
+
+    def test_grader_without_task_id_uses_current_state_task(self):
+        reset("task_2")
+        result = grader()
+        self.assertEqual(result["task_id"], "task_2")
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
+
+    def test_grader_accepts_common_external_task_id_keys(self):
+        reset({"taskId": "task_3"})
+        result = grader(payload={"task": "task_3"})
+        self.assertEqual(result["task_id"], "task_3")
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
 
     def test_baseline_handler_returns_structured_summary(self):
         summary = run_baseline()
