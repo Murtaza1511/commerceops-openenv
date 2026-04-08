@@ -6,7 +6,7 @@ import requests
 
 from app.baseline_runner import choose_action
 from app.models.schemas import Action, Observation
-from app.scoring import clamp_open_unit_interval
+from app.scoring import average_open_scores, clamp_open_unit_interval
 
 
 def _require_env(name: str) -> str:
@@ -42,14 +42,36 @@ def _log_step(task_id: str, step_index: int, reward: float) -> None:
 
 
 def _log_end(result: Dict) -> None:
+    score_value = clamp_open_unit_interval(float(result["score"]))
     payload = {
         "task_id": result["task_id"],
         "difficulty": result["difficulty"],
         "steps": result["steps"],
-        "score": clamp_open_unit_interval(float(result["score"])),
+        "score": score_value,
+        "task_score": score_value,
         "rewards": result["rewards"],
     }
     print(f"[END] {json.dumps(payload, sort_keys=False)}", flush=True)
+
+
+def _log_results(results: list[Dict]) -> None:
+    task_scores = []
+    for item in results:
+        score_value = clamp_open_unit_interval(float(item["score"]))
+        task_scores.append(
+            {
+                "task_id": item["task_id"],
+                "difficulty": item["difficulty"],
+                "task_score": score_value,
+                "score": score_value,
+            }
+        )
+
+    payload = {
+        "task_scores": task_scores,
+        "average_task_score": average_open_scores([entry["task_score"] for entry in task_scores]),
+    }
+    print(f"[RESULTS] {json.dumps(payload, sort_keys=False)}", flush=True)
 
 
 def _extract_json_object(text: str) -> Dict:
@@ -158,6 +180,7 @@ def main() -> None:
 
     client = OpenAI(api_key=hf_token, base_url=api_base_url)
     tasks = _fetch_tasks(env_base_url)
+    run_results: list[Dict] = []
 
     for task in tasks:
         _log_start(task)
@@ -177,15 +200,17 @@ def main() -> None:
             done = response["done"]
 
         graded = _grade_task(env_base_url, task["id"])
-        _log_end(
-            {
-                "task_id": task["id"],
-                "difficulty": task["difficulty"],
-                "steps": step_count,
-                "score": clamp_open_unit_interval(float(graded["score"])),
-                "rewards": rewards,
-            }
-        )
+        final_result = {
+            "task_id": task["id"],
+            "difficulty": task["difficulty"],
+            "steps": step_count,
+            "score": clamp_open_unit_interval(float(graded["score"])),
+            "rewards": rewards,
+        }
+        _log_end(final_result)
+        run_results.append(final_result)
+
+    _log_results(run_results)
 
 
 if __name__ == "__main__":
