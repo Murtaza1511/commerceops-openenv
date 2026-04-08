@@ -27,15 +27,14 @@ def _log_start(task: Dict) -> None:
     payload = {
         "task_id": task["id"],
         "difficulty": task["difficulty"],
-        "max_steps": task.get("max_steps", 5),
     }
     print(f"[START] {json.dumps(payload, sort_keys=False)}", flush=True)
 
 
 def _log_step(task_id: str, step_index: int, reward: float) -> None:
+    _ = step_index
     payload = {
         "task_id": task_id,
-        "step": step_index,
         "reward": clamp_open_unit_interval(float(reward)),
     }
     print(f"[STEP] {json.dumps(payload, sort_keys=False)}", flush=True)
@@ -46,10 +45,8 @@ def _log_end(result: Dict) -> None:
     payload = {
         "task_id": result["task_id"],
         "difficulty": result["difficulty"],
-        "steps": result["steps"],
-        "score": score_value,
         "task_score": score_value,
-        "rewards": result["rewards"],
+        "score": score_value,
     }
     print(f"[END] {json.dumps(payload, sort_keys=False)}", flush=True)
 
