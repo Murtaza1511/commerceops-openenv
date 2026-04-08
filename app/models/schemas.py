@@ -62,7 +62,7 @@ class State(BaseModel):
     classification_attempts: int = 0
     asked_clarification: bool = False
     responded_helpfully: bool = False
-    helpful_response_score: float = 0.0
+    helpful_response_score: float = 0.01
     premature_resolution_attempts: int = 0
 
 

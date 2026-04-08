@@ -45,7 +45,8 @@ class EnvironmentTests(unittest.TestCase):
         )
 
         self.assertFalse(done)
-        self.assertEqual(reward.score, 0.0)
+        self.assertGreater(reward.score, 0.0)
+        self.assertLess(reward.score, 1.0)
 
     def test_grader_rewards_complete_medium_workflow(self):
         task = next(task for task in TASKS if task["id"] == "task_2")
@@ -68,7 +69,7 @@ class EnvironmentTests(unittest.TestCase):
         score = grade_task(self.env.state(), task)
         self.assertGreaterEqual(score, 0.99)
 
-    def test_step_reward_is_normalized_to_zero_one_range(self):
+    def test_step_reward_is_normalized_to_strict_open_interval(self):
         task = next(task for task in TASKS if task["id"] == "task_3")
         self.env.reset_with_task(task)
 
@@ -79,8 +80,8 @@ class EnvironmentTests(unittest.TestCase):
             )
         )
 
-        self.assertGreaterEqual(reward.score, 0.0)
-        self.assertLessEqual(reward.score, 1.0)
+        self.assertGreater(reward.score, 0.0)
+        self.assertLess(reward.score, 1.0)
 
     def test_all_task_scores_stay_strictly_inside_zero_one(self):
         from app.baseline_runner import choose_action

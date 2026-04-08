@@ -2,7 +2,7 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 from app.models.schemas import Action, Observation, Reward, State
-from app.scoring import clamp_closed_unit_interval
+from app.scoring import clamp_open_unit_interval
 
 
 class CustomerSupportEnv:
@@ -113,7 +113,7 @@ class CustomerSupportEnv:
         return observation, Reward(score=normalized_reward), done, info
 
     def _normalize_reward(self, reward: float) -> float:
-        return clamp_closed_unit_interval(reward)
+        return clamp_open_unit_interval(reward)
 
     def _handle_classify(self, action: Action) -> Tuple[float, bool]:
         state = self.current_state
@@ -174,7 +174,10 @@ class CustomerSupportEnv:
             merged.update(matched)
             state.matched_solution_keywords = sorted(merged)
             coverage = len(state.matched_solution_keywords) / len(expected_solutions)
-            state.helpful_response_score = max(state.helpful_response_score, coverage)
+            state.helpful_response_score = max(
+                state.helpful_response_score,
+                clamp_open_unit_interval(coverage),
+            )
             state.responded_helpfully = coverage >= (2 / 3) if expected_solutions else True
             state.sentiment = min(1.0, state.sentiment + 0.2)
             done = (
