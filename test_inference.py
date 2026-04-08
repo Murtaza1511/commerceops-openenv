@@ -1,13 +1,29 @@
 import io
 import json
-import os
 import unittest
 from contextlib import redirect_stdout
 
-from inference import _log_end, _log_results
+from inference import _log_end, _log_results, _log_start, _log_step
 
 
 class InferenceLoggingTests(unittest.TestCase):
+    def test_log_start_uses_required_block_prefix(self):
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            _log_start({"id": "task_1", "difficulty": "easy"})
+        line = buffer.getvalue().strip()
+        self.assertTrue(line.startswith("[START] "))
+        self.assertIn("task=task_1", line)
+
+    def test_log_step_uses_required_block_prefix(self):
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            _log_step("task_1", 1, 0.5)
+        line = buffer.getvalue().strip()
+        self.assertTrue(line.startswith("[STEP] "))
+        self.assertIn("task=task_1", line)
+        self.assertIn("reward=", line)
+
     def test_log_end_includes_task_score_in_open_interval(self):
         buffer = io.StringIO()
         result_payload = {
@@ -18,27 +34,13 @@ class InferenceLoggingTests(unittest.TestCase):
             "rewards": [0.0, 1.0],
         }
 
-        previous_verbose = os.getenv("INFERENCE_VERBOSE")
-        os.environ["INFERENCE_VERBOSE"] = "1"
-        try:
-            with redirect_stdout(buffer):
-                _log_end(result_payload)
-        finally:
-            if previous_verbose is None:
-                os.environ.pop("INFERENCE_VERBOSE", None)
-            else:
-                os.environ["INFERENCE_VERBOSE"] = previous_verbose
+        with redirect_stdout(buffer):
+            _log_end(result_payload)
 
         line = buffer.getvalue().strip()
         self.assertTrue(line.startswith("[END] "))
-        payload = json.loads(line[len("[END] ") :])
-
-        self.assertIn("task_score", payload)
-        self.assertIn("score", payload)
-        self.assertGreater(payload["task_score"], 0.0)
-        self.assertLess(payload["task_score"], 1.0)
-        self.assertGreater(payload["score"], 0.0)
-        self.assertLess(payload["score"], 1.0)
+        self.assertIn("task=task_1", line)
+        self.assertIn("score=0.99", line)
 
     def test_log_results_emits_normalized_per_task_scores(self):
         buffer = io.StringIO()
@@ -52,8 +54,8 @@ class InferenceLoggingTests(unittest.TestCase):
             _log_results(results)
 
         line = buffer.getvalue().strip()
-        self.assertTrue(line.startswith("{"))
-        payload = json.loads(line)
+        self.assertTrue(line.startswith("[RESULTS] "))
+        payload = json.loads(line[len("[RESULTS] ") :])
 
         self.assertIn("task_scores", payload)
         self.assertEqual(len(payload["task_scores"]), 3)

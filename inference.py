@@ -3,6 +3,9 @@ import os
 import warnings
 from typing import Any, Dict
 
+# Suppress dependency warnings before importing HTTP clients.
+warnings.filterwarnings("ignore")
+
 import requests
 
 from app.baseline_runner import choose_action
@@ -25,37 +28,17 @@ def _get_env_with_default(name: str, default: str) -> str:
 
 
 def _log_start(task: Dict) -> None:
-    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
-        return
-    payload = {
-        "task_id": task["id"],
-        "difficulty": task["difficulty"],
-    }
-    print(f"[START] {json.dumps(payload, sort_keys=False)}", flush=True)
+    print(f"[START] task={task['id']} difficulty={task['difficulty']}", flush=True)
 
 
 def _log_step(task_id: str, step_index: int, reward: float) -> None:
-    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
-        return
-    _ = step_index
-    payload = {
-        "task_id": task_id,
-        "reward": clamp_open_unit_interval(float(reward)),
-    }
-    print(f"[STEP] {json.dumps(payload, sort_keys=False)}", flush=True)
+    normalized_reward = clamp_open_unit_interval(float(reward))
+    print(f"[STEP] task={task_id} step={step_index} reward={normalized_reward}", flush=True)
 
 
 def _log_end(result: Dict) -> None:
-    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
-        return
     score_value = clamp_open_unit_interval(float(result["score"]))
-    payload = {
-        "task_id": result["task_id"],
-        "difficulty": result["difficulty"],
-        "task_score": score_value,
-        "score": score_value,
-    }
-    print(f"[END] {json.dumps(payload, sort_keys=False)}", flush=True)
+    print(f"[END] task={result['task_id']} score={score_value}", flush=True)
 
 
 def _log_results(results: list[Dict]) -> None:
@@ -81,7 +64,7 @@ def _log_results(results: list[Dict]) -> None:
         "per_task_scores": per_task,
         "average_task_score": average_open_scores(task_scores),
     }
-    print(json.dumps(payload, sort_keys=False), flush=True)
+    print(f"[RESULTS] {json.dumps(payload, sort_keys=False)}", flush=True)
 
 
 def _extract_json_object(text: str) -> Dict:
