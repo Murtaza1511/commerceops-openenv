@@ -56,9 +56,13 @@ def _log_end(result: Dict) -> None:
 
 def _log_results(results: list[Dict]) -> None:
     task_scores = []
+    task_ids = []
+    per_task = []
     for item in results:
         score_value = clamp_open_unit_interval(float(item["score"]))
-        task_scores.append(
+        task_scores.append(score_value)
+        task_ids.append(item["task_id"])
+        per_task.append(
             {
                 "task_id": item["task_id"],
                 "difficulty": item["difficulty"],
@@ -69,7 +73,9 @@ def _log_results(results: list[Dict]) -> None:
 
     payload = {
         "task_scores": task_scores,
-        "average_task_score": average_open_scores([entry["task_score"] for entry in task_scores]),
+        "task_ids": task_ids,
+        "per_task_scores": per_task,
+        "average_task_score": average_open_scores(task_scores),
     }
     print(f"[RESULTS] {json.dumps(payload, sort_keys=False)}", flush=True)
 

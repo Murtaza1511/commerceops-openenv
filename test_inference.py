@@ -48,7 +48,13 @@ class InferenceLoggingTests(unittest.TestCase):
 
         self.assertIn("task_scores", payload)
         self.assertEqual(len(payload["task_scores"]), 3)
-        for item in payload["task_scores"]:
+        for value in payload["task_scores"]:
+            self.assertGreater(value, 0.0)
+            self.assertLess(value, 1.0)
+
+        self.assertIn("per_task_scores", payload)
+        self.assertEqual(len(payload["per_task_scores"]), 3)
+        for item in payload["per_task_scores"]:
             self.assertIn("task_score", item)
             self.assertIn("score", item)
             self.assertGreater(item["task_score"], 0.0)
