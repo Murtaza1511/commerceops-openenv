@@ -62,11 +62,11 @@ class State(BaseModel):
     classification_attempts: int = 0
     asked_clarification: bool = False
     responded_helpfully: bool = False
-    helpful_response_score: float = 0.01
+    helpful_response_score: float = Field(default=0.01, gt=0.0, lt=1.0)
     premature_resolution_attempts: int = 0
 
 
 # REWARD MODEL
 
 class Reward(BaseModel):
-    score: float
+    score: float = Field(..., gt=0.0, lt=1.0)

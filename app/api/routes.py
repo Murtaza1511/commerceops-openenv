@@ -7,7 +7,7 @@ from app.env.environment import CustomerSupportEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
-from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval
+from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval, sanitize_score_fields
 
 router = APIRouter()
 env = CustomerSupportEnv()
@@ -67,12 +67,14 @@ def step(action: Action):
 
     observation, reward, done, info = env.step(action)
 
-    return {
+    return sanitize_score_fields(
+        {
         "observation": observation,
         "reward": reward,
         "done": done,
         "info": info,
-    }
+        }
+    )
 
 
 @router.get("/state")
@@ -81,7 +83,7 @@ def get_state():
     if state is None:
         env.reset_with_task(TASKS[0])
         state = env.state()
-    return state
+    return sanitize_score_fields(state.model_dump())
 
 
 @router.get("/tasks")
@@ -100,15 +102,19 @@ def _grade_response(task_id: Optional[str], payload: Any = None) -> dict:
     task_id = task["id"]
 
     if state is None:
-        return {
+        return sanitize_score_fields(
+            {
             "task_id": task_id,
             "score": MIN_OPEN_SCORE,
-        }
+            }
+        )
 
-    return {
+    return sanitize_score_fields(
+        {
         "task_id": task_id,
         "score": clamp_open_unit_interval(grade_task(state, task)),
-    }
+        }
+    )
 
 
 @router.post("/grader")
@@ -123,4 +129,4 @@ def grader_get(task_id: Optional[str] = None):
 
 @router.get("/baseline")
 def run_baseline():
-    return run_all_tasks_local()
+    return sanitize_score_fields(run_all_tasks_local())

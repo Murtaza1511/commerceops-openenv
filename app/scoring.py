@@ -16,3 +16,21 @@ def average_open_scores(values: list[float]) -> float:
     if not values:
         return MIN_OPEN_SCORE
     return clamp_open_unit_interval(sum(values) / len(values))
+
+
+def sanitize_score_fields(payload):
+    if hasattr(payload, "model_dump"):
+        return sanitize_score_fields(payload.model_dump())
+    if isinstance(payload, dict):
+        sanitized = {}
+        for key, value in payload.items():
+            if key == "score" and isinstance(value, (int, float)):
+                sanitized[key] = clamp_open_unit_interval(float(value))
+            elif key.endswith("_score") and isinstance(value, (int, float)):
+                sanitized[key] = clamp_open_unit_interval(float(value))
+            else:
+                sanitized[key] = sanitize_score_fields(value)
+        return sanitized
+    if isinstance(payload, list):
+        return [sanitize_score_fields(item) for item in payload]
+    return payload

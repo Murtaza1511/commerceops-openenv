@@ -90,8 +90,8 @@ class ApiHandlerTests(unittest.TestCase):
             )
         )
         self.assertIn("reward", response)
-        self.assertGreater(response["reward"].score, 0.0)
-        self.assertLess(response["reward"].score, 1.0)
+        self.assertGreater(response["reward"]["score"], 0.0)
+        self.assertLess(response["reward"]["score"], 1.0)
 
     def test_baseline_handler_returns_structured_summary(self):
         summary = run_baseline()
