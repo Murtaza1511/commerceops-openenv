@@ -16,6 +16,8 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(clamp_open_unit_interval(1.0), MAX_OPEN_SCORE)
         self.assertEqual(clamp_open_unit_interval(0.999), MAX_OPEN_SCORE)
         self.assertEqual(clamp_open_unit_interval(0.001), MIN_OPEN_SCORE)
+        self.assertEqual(clamp_open_unit_interval(float("nan")), MIN_OPEN_SCORE)
+        self.assertEqual(clamp_open_unit_interval(float("inf")), MAX_OPEN_SCORE)
 
     def test_closed_interval_clamp_preserves_reward_boundaries(self):
         self.assertEqual(clamp_closed_unit_interval(-0.5), 0.0)
@@ -32,12 +34,16 @@ class ScoringTests(unittest.TestCase):
             "score": 1.0,
             "nested": {"score": 0.0, "helpful_response_score": 1.0},
             "items": [{"score": 0.0}, {"value": 7}],
+            "average_score": 1.0,
+            "task_scores": [0.0, 1.0, 0.57],
         }
         sanitized = sanitize_score_fields(payload)
         self.assertEqual(sanitized["score"], 0.99)
         self.assertEqual(sanitized["nested"]["score"], 0.01)
         self.assertEqual(sanitized["nested"]["helpful_response_score"], 0.99)
         self.assertEqual(sanitized["items"][0]["score"], 0.01)
+        self.assertEqual(sanitized["average_score"], 0.99)
+        self.assertEqual(sanitized["task_scores"], [0.01, 0.99, 0.57])
 
 
 if __name__ == "__main__":

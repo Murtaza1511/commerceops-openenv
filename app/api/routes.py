@@ -88,10 +88,12 @@ def get_state():
 
 @router.get("/tasks")
 def get_tasks():
-    return {
+    return sanitize_score_fields(
+        {
         "tasks": TASKS,
         "action_schema": Action.model_json_schema(),
-    }
+        }
+    )
 
 
 def _grade_response(task_id: Optional[str], payload: Any = None) -> dict:

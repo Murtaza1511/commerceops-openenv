@@ -36,7 +36,7 @@ def _log_step(task_id: str, step_index: int, reward: float) -> None:
     payload = {
         "task_id": task_id,
         "step": step_index,
-        "reward": reward,
+        "reward": clamp_open_unit_interval(float(reward)),
     }
     print(f"[STEP] {json.dumps(payload, sort_keys=False)}", flush=True)
 
@@ -170,7 +170,7 @@ def main() -> None:
             action = _choose_action(client, model_name, task, observation, step_count)
             response = _step_task(env_base_url, action)
             observation = Observation.model_validate(response["observation"])
-            reward = response["reward"]["score"]
+            reward = clamp_open_unit_interval(float(response["reward"]["score"]))
             rewards.append(reward)
             step_count += 1
             _log_step(task["id"], step_count, reward)
