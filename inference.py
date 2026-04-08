@@ -1,5 +1,6 @@
 import json
 import os
+import warnings
 from typing import Any, Dict
 
 import requests
@@ -24,6 +25,8 @@ def _get_env_with_default(name: str, default: str) -> str:
 
 
 def _log_start(task: Dict) -> None:
+    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
+        return
     payload = {
         "task_id": task["id"],
         "difficulty": task["difficulty"],
@@ -32,6 +35,8 @@ def _log_start(task: Dict) -> None:
 
 
 def _log_step(task_id: str, step_index: int, reward: float) -> None:
+    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
+        return
     _ = step_index
     payload = {
         "task_id": task_id,
@@ -41,6 +46,8 @@ def _log_step(task_id: str, step_index: int, reward: float) -> None:
 
 
 def _log_end(result: Dict) -> None:
+    if os.getenv("INFERENCE_VERBOSE", "").strip() != "1":
+        return
     score_value = clamp_open_unit_interval(float(result["score"]))
     payload = {
         "task_id": result["task_id"],
@@ -74,7 +81,7 @@ def _log_results(results: list[Dict]) -> None:
         "per_task_scores": per_task,
         "average_task_score": average_open_scores(task_scores),
     }
-    print(f"[RESULTS] {json.dumps(payload, sort_keys=False)}", flush=True)
+    print(json.dumps(payload, sort_keys=False), flush=True)
 
 
 def _extract_json_object(text: str) -> Dict:
@@ -167,6 +174,9 @@ def _choose_action(client: Any, model_name: str, task: Dict, observation: Observ
 
 
 def main() -> None:
+    # Keep inference stdout deterministic and parser-safe.
+    warnings.filterwarnings("ignore")
+
     api_base_url = _get_env_with_default("API_BASE_URL", "https://api.openai.com/v1")
     model_name = _get_env_with_default("MODEL_NAME", "gpt-4.1-mini")
     hf_token = _require_env("HF_TOKEN")

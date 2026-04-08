@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import unittest
 from contextlib import redirect_stdout
 
@@ -17,8 +18,16 @@ class InferenceLoggingTests(unittest.TestCase):
             "rewards": [0.0, 1.0],
         }
 
-        with redirect_stdout(buffer):
-            _log_end(result_payload)
+        previous_verbose = os.getenv("INFERENCE_VERBOSE")
+        os.environ["INFERENCE_VERBOSE"] = "1"
+        try:
+            with redirect_stdout(buffer):
+                _log_end(result_payload)
+        finally:
+            if previous_verbose is None:
+                os.environ.pop("INFERENCE_VERBOSE", None)
+            else:
+                os.environ["INFERENCE_VERBOSE"] = previous_verbose
 
         line = buffer.getvalue().strip()
         self.assertTrue(line.startswith("[END] "))
@@ -43,8 +52,8 @@ class InferenceLoggingTests(unittest.TestCase):
             _log_results(results)
 
         line = buffer.getvalue().strip()
-        self.assertTrue(line.startswith("[RESULTS] "))
-        payload = json.loads(line[len("[RESULTS] ") :])
+        self.assertTrue(line.startswith("{"))
+        payload = json.loads(line)
 
         self.assertIn("task_scores", payload)
         self.assertEqual(len(payload["task_scores"]), 3)
