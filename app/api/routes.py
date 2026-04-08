@@ -84,8 +84,7 @@ def get_tasks():
     }
 
 
-@router.post("/grader")
-def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
+def _grade_response(task_id: Optional[str], payload: Any = None) -> dict:
     state = env.state()
     requested_task_id = task_id or _extract_task_id(payload)
     task_id = requested_task_id or (state.task_id if state is not None else TASKS[0]["id"])
@@ -109,6 +108,16 @@ def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
         "task_id": task_id,
         "score": clamp_open_unit_interval(grade_task(state, task)),
     }
+
+
+@router.post("/grader")
+def grader(task_id: Optional[str] = None, payload: Any = Body(None)):
+    return _grade_response(task_id=task_id, payload=payload)
+
+
+@router.get("/grader")
+def grader_get(task_id: Optional[str] = None):
+    return _grade_response(task_id=task_id)
 
 
 @router.get("/baseline")

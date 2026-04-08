@@ -1,6 +1,6 @@
 import unittest
 
-from app.api.routes import env, get_tasks, grader, index, reset, run_baseline, step
+from app.api.routes import env, get_tasks, grader, grader_get, index, reset, run_baseline, step
 from app.models.schemas import Action
 
 
@@ -64,6 +64,13 @@ class ApiHandlerTests(unittest.TestCase):
         env.current_task = None
 
         result = grader(payload={"task_id": "task_1"})
+        self.assertEqual(result["task_id"], "task_1")
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
+
+    def test_get_grader_path_is_supported_and_in_range(self):
+        reset("task_1")
+        result = grader_get()
         self.assertEqual(result["task_id"], "task_1")
         self.assertGreater(result["score"], 0.0)
         self.assertLess(result["score"], 1.0)
