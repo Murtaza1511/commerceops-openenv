@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body
 
 from app.baseline_runner import run_all_tasks_local
 from app.env.environment import CustomerSupportEnv
@@ -11,6 +11,7 @@ from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval
 
 router = APIRouter()
 env = CustomerSupportEnv()
+env.reset_with_task(TASKS[0])
 
 
 @router.get("/")
@@ -44,21 +45,27 @@ def _extract_task_id(payload: Any) -> Optional[str]:
     return None
 
 
+def _task_or_default(task_id: Optional[str]) -> dict:
+    if isinstance(task_id, str):
+        task = next((item for item in TASKS if item["id"] == task_id), None)
+        if task is not None:
+            return task
+    return TASKS[0]
+
+
 @router.post("/reset")
 def reset(payload: Any = Body(None)):
-    task_id = _extract_task_id(payload) or TASKS[0]["id"]
-    task = next((item for item in TASKS if item["id"] == task_id), None)
-    if not task:
-        raise HTTPException(status_code=404, detail="Invalid task_id")
+    task_id = _extract_task_id(payload)
+    task = _task_or_default(task_id)
     return env.reset_with_task(task)
 
 
 @router.post("/step")
 def step(action: Action):
-    try:
-        observation, reward, done, info = env.step(action)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if env.state() is None or env.current_task is None:
+        env.reset_with_task(TASKS[0])
+
+    observation, reward, done, info = env.step(action)
 
     return {
         "observation": observation,
@@ -72,7 +79,8 @@ def step(action: Action):
 def get_state():
     state = env.state()
     if state is None:
-        raise HTTPException(status_code=404, detail="Environment has not been reset yet")
+        env.reset_with_task(TASKS[0])
+        state = env.state()
     return state
 
 
@@ -87,16 +95,9 @@ def get_tasks():
 def _grade_response(task_id: Optional[str], payload: Any = None) -> dict:
     state = env.state()
     requested_task_id = task_id or _extract_task_id(payload)
-    task_id = requested_task_id or (state.task_id if state is not None else TASKS[0]["id"])
-    task = next((item for item in TASKS if item["id"] == task_id), None)
-    if task is None:
-        # Compatibility fallback for external validators that may pass
-        # alternate task identifiers or omit task context.
-        fallback_task_id = state.task_id if state is not None else TASKS[0]["id"]
-        task = next((item for item in TASKS if item["id"] == fallback_task_id), None)
-        if task is None:
-            raise HTTPException(status_code=404, detail="Invalid task_id")
-        task_id = task["id"]
+    fallback_task_id = state.task_id if state is not None else None
+    task = _task_or_default(requested_task_id or fallback_task_id)
+    task_id = task["id"]
 
     if state is None:
         return {

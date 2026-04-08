@@ -75,6 +75,24 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertGreater(result["score"], 0.0)
         self.assertLess(result["score"], 1.0)
 
+    def test_reset_with_invalid_task_falls_back_to_default(self):
+        observation = reset({"task_id": "unknown-task"})
+        self.assertEqual(observation.task_id, "task_1")
+
+    def test_step_before_reset_bootstraps_state(self):
+        env.current_state = None
+        env.current_task = None
+        response = step(
+            Action(
+                action_type="classify",
+                content="Account access issue",
+                predicted_issue="account_access",
+            )
+        )
+        self.assertIn("reward", response)
+        self.assertGreater(response["reward"].score, 0.0)
+        self.assertLess(response["reward"].score, 1.0)
+
     def test_baseline_handler_returns_structured_summary(self):
         summary = run_baseline()
 
