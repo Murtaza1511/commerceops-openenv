@@ -82,6 +82,23 @@ class EnvironmentTests(unittest.TestCase):
         self.assertGreaterEqual(reward.score, 0.0)
         self.assertLessEqual(reward.score, 1.0)
 
+    def test_all_task_scores_stay_strictly_inside_zero_one(self):
+        from app.baseline_runner import choose_action
+
+        for task in TASKS:
+            observation = self.env.reset_with_task(task)
+            done = False
+            step_count = 0
+
+            while not done and step_count < task.get("max_steps", 5):
+                action = Action.model_validate(choose_action(task, observation, step_count))
+                observation, _, done, _ = self.env.step(action)
+                step_count += 1
+
+            score = grade_task(self.env.state(), task)
+            self.assertGreater(score, 0.0)
+            self.assertLess(score, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
