@@ -2,11 +2,11 @@
 title: ApiDebug OpenEnv
 emoji: 🔧
 colorFrom: blue
-colorTo: slate
+colorTo: gray
 sdk: docker
 pinned: false
 license: mit
-short_description: OpenEnv benchmark for HTTP/API debugging and deterministic repair grading
+short_description: OpenEnv API repair benchmark with deterministic grading
 python_version: "3.11"
 app_port: 7860
 suggested_hardware: cpu-basic
