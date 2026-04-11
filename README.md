@@ -92,7 +92,13 @@ ENV_BASE_URL=http://127.0.0.1:7860 \
 ## Testing
 
 ```bash
-./venv/bin/python -m unittest test_models.py test_env.py test_api.py test_inference.py
+./venv/bin/python -m unittest discover -s . -p 'test*.py'
+```
+
+Or run files explicitly:
+
+```bash
+./venv/bin/python -m unittest test_models.py test_env.py test_api.py test_inference.py test_submission_contract.py test_scoring.py
 ```
 
 ## Docker

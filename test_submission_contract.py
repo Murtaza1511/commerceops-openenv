@@ -33,9 +33,9 @@ class SubmissionContractTests(unittest.TestCase):
             self.client.post(
                 "/step",
                 json={
-                    "action_type": "classify",
-                    "content": "This is an account access issue.",
-                    "predicted_issue": "account_access",
+                    "action_type": "analyze",
+                    "content": "Request body is missing a required JSON field.",
+                    "predicted_diagnosis": "missing_required_field",
                 },
             )
         )
