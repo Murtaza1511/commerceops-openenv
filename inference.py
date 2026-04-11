@@ -3,7 +3,6 @@ import os
 import warnings
 from typing import Any, Dict
 
-# Suppress dependency warnings before importing HTTP clients.
 warnings.filterwarnings("ignore")
 
 import requests
@@ -105,59 +104,29 @@ def _grade_task(env_base_url: str, task_id: str) -> Dict:
 def _choose_action(client: Any, model_name: str, task: Dict, observation: Observation, step_count: int) -> Dict:
     fallback_action = choose_action(task, observation, step_count)
     prompt = (
-        "You are a deterministic commerce operations agent operating in an OpenEnv benchmark.\n"
-        "Return only a JSON object with keys: action_type, content, predicted_issue.\n"
-        "Use one of these action_type values: classify, ask, respond, resolve, escalate.\n"
-        "Use predicted_issue only for classify actions.\n"
-        "Allowed predicted_issue values: payment_issue, account_access, fraud_risk, product_bug.\n"
-        f"Task: {json.dumps(task, ensure_ascii=True)}\n"
-        f"Observation: {observation.model_dump_json()}\n"
+        "You are an API debugging and repair agent in an OpenEnv benchmark.\n"
+        "Return only a JSON object with keys: action_type, content, and optionally predicted_diagnosis "
+        "(required when action_type is analyze).\n"
+        "action_type must be one of: analyze, ask, propose_fix, apply_fix, confirm_done.\n"
+        "predicted_diagnosis must be one of: missing_required_field, wrong_request_line, upstream_or_ambiguous.\n"
+        "Rules: If the task requires clarification, use ask first with a concrete question. "
+        "Use analyze with the correct predicted_diagnosis once you have enough context. "
+        "propose_fix must include all remediation details needed for the scenario. "
+        "apply_fix only after a complete proposal. Use confirm_done only when the task requires it (hard task).\n"
+        f"Task JSON: {json.dumps(task, ensure_ascii=True)}\n"
+        f"Observation JSON: {observation.model_dump_json()}\n"
         f"Step index: {step_count}\n"
-        "Follow the required workflow strictly.\n"
-        "If the task requires clarification, ask a clarification question first.\n"
-        "Then classify the issue.\n"
-        "Then give concrete next steps.\n"
-        "Then escalate only if the task requires escalation.\n"
-        "Prioritize correct classification, safe troubleshooting, clarification before escalation when needed, "
-        "and avoid premature resolve or escalate actions."
     )
 
     try:
         response = client.responses.create(model=model_name, input=prompt)
         action = _extract_json_object(response.output_text)
-        validated = Action.model_validate(action).model_dump(exclude_none=True)
-
-        # Keep task flow aligned with the benchmark requirements even if the model
-        # returns a syntactically valid but strategically weak action. We allow the
-        # model to lead only when it matches the benchmark-safe action shape.
-        if validated["action_type"] != fallback_action["action_type"]:
-            return fallback_action
-
-        if validated["action_type"] == "classify":
-            if validated.get("predicted_issue") != fallback_action.get("predicted_issue"):
-                return fallback_action
-
-        if validated["action_type"] == "ask":
-            ask_text = validated["content"].lower()
-            required_tokens = ["when", "card", "order"]
-            if task.get("requires_clarification") and not all(token in ask_text for token in required_tokens):
-                return fallback_action
-
-        if validated["action_type"] == "respond":
-            content = validated["content"].lower()
-            for solution in task.get("valid_solutions", []):
-                if solution not in content:
-                    return fallback_action
-
-        return validated
+        return Action.model_validate(action).model_dump(exclude_none=True)
     except Exception:
-        # Keep the submission runner resilient if the model returns malformed JSON
-        # or a partially missing action payload.
         return fallback_action
 
 
 def main() -> None:
-    # Keep inference stdout deterministic and parser-safe.
     warnings.filterwarnings("ignore")
 
     api_base_url = _get_env_with_default("API_BASE_URL", "https://api.openai.com/v1")
@@ -166,7 +135,6 @@ def main() -> None:
     local_image_name = os.getenv("LOCAL_IMAGE_NAME", "").strip()
     env_base_url = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860").strip()
 
-    # Optional variable included for compatibility with the published checklist.
     _ = local_image_name
 
     try:
@@ -185,7 +153,7 @@ def main() -> None:
         done = False
         step_count = 0
 
-        while not done and step_count < task.get("max_steps", 5):
+        while not done and step_count < task.get("max_steps", 8):
             action = _choose_action(client, model_name, task, observation, step_count)
             response = _step_task(env_base_url, action)
             observation = Observation.model_validate(response["observation"])

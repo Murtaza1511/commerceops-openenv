@@ -1,6 +1,8 @@
 import unittest
 
 from app.api.routes import env, get_tasks, grader, grader_get, index, reset, run_baseline, step
+from app.baseline_runner import choose_action
+from app.env.tasks import TASKS
 from app.models.schemas import Action
 
 
@@ -20,7 +22,7 @@ class ApiHandlerTests(unittest.TestCase):
 
         payload = health()
         self.assertEqual(payload["status"], "ok")
-        self.assertEqual(payload["service"], "commerceops-openenv")
+        self.assertEqual(payload["service"], "apidebug-openenv")
 
     def test_root_handler_reports_service_status(self):
         payload = index()
@@ -28,20 +30,23 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(payload["health"], "/health")
 
     def test_reset_step_and_grader_workflow(self):
+        task = next(t for t in TASKS if t["id"] == "task_1")
         observation = reset("task_1")
         self.assertEqual(observation.task_id, "task_1")
 
-        response = step(
-            Action(
-                action_type="classify",
-                content="This is an account access issue.",
-                predicted_issue="account_access",
-            )
-        )
-        self.assertTrue(response["done"])
+        done = False
+        step_count = 0
+        while not done and step_count < task.get("max_steps", 8):
+            payload = choose_action(task, observation, step_count)
+            response = step(Action.model_validate(payload))
+            observation = response["observation"]
+            done = response["done"]
+            step_count += 1
+
+        self.assertTrue(done)
 
         result = grader("task_1")
-        self.assertGreaterEqual(result["score"], 0.9)
+        self.assertGreaterEqual(result["score"], 0.85)
         self.assertGreater(result["score"], 0.0)
         self.assertLess(result["score"], 1.0)
 
@@ -84,9 +89,9 @@ class ApiHandlerTests(unittest.TestCase):
         env.current_task = None
         response = step(
             Action(
-                action_type="classify",
-                content="Account access issue",
-                predicted_issue="account_access",
+                action_type="analyze",
+                content="Triage",
+                predicted_diagnosis="missing_required_field",
             )
         )
         self.assertIn("reward", response)

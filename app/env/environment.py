@@ -5,58 +5,31 @@ from app.models.schemas import Action, Observation, Reward, State
 from app.scoring import clamp_open_unit_interval
 
 
-class CustomerSupportEnv:
+class ApiRepairEnv:
     def __init__(self):
         self.current_state: Optional[State] = None
         self.current_task: Optional[Dict] = None
-        self.knowledge_base: Dict[str, List[str]] = {
-            "payment_issue": [
-                "check bank hold",
-                "avoid repeated retries",
-                "wait 24 hours before retrying",
-            ],
-            "product_bug": [
-                "restart app",
-                "clear cache",
-                "update app",
-            ],
-            "account_access": [
-                "recover 2fa",
-                "verify account ownership",
-                "reset password",
-            ],
-            "fraud_risk": [
-                "freeze card",
-                "review recent orders",
-                "change account password",
-            ],
-        }
 
     def reset(self) -> Observation:
-        default_task = {
-            "id": "adhoc_task",
-            "query": "A customer says their card was charged twice after a checkout retry.",
-            "expected_issue": "payment_issue",
-            "valid_solutions": self.knowledge_base["payment_issue"],
-            "requires_resolution": False,
-            "requires_escalation": False,
-            "requires_clarification": False,
-            "max_steps": 5,
-        }
-        return self.reset_with_task(default_task)
+        from app.env.tasks import TASKS
+
+        return self.reset_with_task(TASKS[0])
 
     def reset_with_task(self, task: Dict) -> Observation:
         self.current_task = task
         self.current_state = State(
-            ticket_id=str(uuid.uuid4()),
+            request_id=str(uuid.uuid4()),
             task_id=task["id"],
-            customer_query=task["query"],
-            conversation_history=[task["query"]],
+            artifact=task["artifact"],
+            conversation_history=[
+                f"[{task['name']}]",
+                task["artifact"],
+            ],
             sentiment=0.0,
             steps_taken=0,
-            max_steps=task.get("max_steps", 5),
+            max_steps=task.get("max_steps", 8),
         )
-        return self._build_observation(task["query"])
+        return self._build_observation(self._initial_feedback(task))
 
     def state(self) -> Optional[State]:
         return self.current_state
@@ -67,217 +40,208 @@ class CustomerSupportEnv:
 
         state = self.current_state
         task = self.current_task
-        reward = -0.04
+        reward = -0.03
         done = False
         info: Dict[str, object] = {"task_id": task["id"]}
 
         state.steps_taken += 1
         state.action_history.append(action.action_type)
-        agent_message = action.content.strip()
-        state.conversation_history.append(f"agent: {agent_message}")
+        agent_line = f"agent {action.action_type}: {action.content.strip()}"
+        state.conversation_history.append(agent_line)
 
-        if action.action_type == "classify":
-            classify_reward, classify_done = self._handle_classify(action)
-            reward += classify_reward
-            done = done or classify_done
+        if action.action_type == "analyze":
+            r, d = self._handle_analyze(action)
+            reward += r
+            done = done or d
         elif action.action_type == "ask":
             reward += self._handle_ask(action)
-        elif action.action_type == "respond":
-            respond_reward, respond_done = self._handle_respond(action)
-            reward += respond_reward
-            done = done or respond_done
-        elif action.action_type == "resolve":
-            resolution_reward, done = self._handle_resolve()
-            reward += resolution_reward
-        elif action.action_type == "escalate":
-            escalation_reward, done = self._handle_escalate()
-            reward += escalation_reward
-            info["escalated"] = state.resolved
+        elif action.action_type == "propose_fix":
+            r, d = self._handle_propose_fix(action)
+            reward += r
+            done = done or d
+        elif action.action_type == "apply_fix":
+            r, d = self._handle_apply_fix(action)
+            reward += r
+            done = done or d
+        elif action.action_type == "confirm_done":
+            r, d = self._handle_confirm_done(action)
+            reward += r
+            done = done or d
 
         if state.steps_taken >= state.max_steps:
             if not state.resolved:
-                reward -= 0.25
+                reward -= 0.2
             done = True
 
-        customer_reply = self._generate_customer_reply(action)
-        state.conversation_history.append(f"customer: {customer_reply}")
-        reward += 0.05 * state.sentiment
+        feedback = self._feedback_after_step(action)
+        state.conversation_history.append(f"simulator: {feedback}")
+        reward += 0.04 * state.sentiment
 
-        observation = self._build_observation(customer_reply)
+        observation = self._build_observation(feedback)
         info["state_summary"] = {
-            "classification_correct": state.classification_correct,
-            "responded_helpfully": state.responded_helpfully,
+            "diagnosis_correct": state.diagnosis_correct,
+            "fix_proposed": state.fix_proposed,
+            "fix_applied": state.fix_applied,
             "resolved": state.resolved,
         }
-        normalized_reward = self._normalize_reward(reward)
-        return observation, Reward(score=normalized_reward), done, info
+        return observation, Reward(score=self._normalize_reward(reward)), done, info
 
     def _normalize_reward(self, reward: float) -> float:
         return clamp_open_unit_interval(reward)
 
-    def _handle_classify(self, action: Action) -> Tuple[float, bool]:
+    def _initial_feedback(self, task: Dict) -> str:
+        tid = task["id"]
+        if tid == "task_1":
+            return "HTTP 400: validation error — request body missing required fields."
+        if tid == "task_2":
+            return "HTTP 405: method not allowed for this resource (expected JSON search)."
+        return "HTTP 502: bad gateway — upstream error. Impact scope unclear."
+
+    def _feedback_after_step(self, action: Action) -> str:
         state = self.current_state
         task = self.current_task
-        state.classification_attempts += 1
+        assert state is not None and task is not None
 
-        if action.predicted_issue == task["expected_issue"]:
-            if not state.classification_correct:
-                state.classification_correct = True
-                state.issue_type = action.predicted_issue
-                state.sentiment = min(1.0, state.sentiment + 0.1)
-                done = (
-                    not task.get("valid_solutions")
-                    and not task.get("requires_resolution")
-                    and not task.get("requires_escalation")
-                )
-                return 0.3, done
+        if action.action_type == "ask" and task.get("requires_clarification") and state.asked_clarification:
+            return task.get("clarification_response", "Here is the missing context.")
+        if action.action_type == "analyze" and state.diagnosis_correct:
+            return "Diagnosis recorded in the incident log."
+        if action.action_type == "propose_fix" and state.fix_proposed:
+            return "Patch validated against schema checks."
+        if action.action_type == "apply_fix" and state.fix_applied:
+            return "CI pipeline accepted the change; staging deploy triggered."
+        if action.action_type == "confirm_done" and state.resolved:
+            return "Incident closed; on-call notified."
+        return "Awaiting next action."
+
+    def _handle_analyze(self, action: Action) -> Tuple[float, bool]:
+        state = self.current_state
+        task = self.current_task
+        assert state is not None and task is not None
+
+        state.diagnosis_attempts += 1
+        if task.get("requires_clarification") and not state.asked_clarification:
+            state.sentiment = max(-1.0, state.sentiment - 0.1)
+            return -0.14, False
+
+        if action.predicted_diagnosis == task["expected_diagnosis"]:
+            if not state.diagnosis_correct:
+                state.diagnosis_correct = True
+                state.sentiment = min(1.0, state.sentiment + 0.12)
+                return 0.28, False
             return -0.02, False
 
-        state.issue_type = action.predicted_issue
-        state.classification_correct = False
-        state.sentiment = max(-1.0, state.sentiment - 0.15)
-        return -0.25, False
+        state.diagnosis_correct = False
+        state.sentiment = max(-1.0, state.sentiment - 0.12)
+        return -0.2, False
 
     def _handle_ask(self, action: Action) -> float:
         state = self.current_state
         task = self.current_task
+        assert state is not None and task is not None
         content = action.content.lower()
 
-        if task.get("requires_clarification"):
-            if not state.asked_clarification and any(
-                token in content for token in ["detail", "details", "when", "error", "what happens"]
-            ):
-                state.asked_clarification = True
-                state.sentiment = min(1.0, state.sentiment + 0.1)
-                return 0.18
-            state.sentiment = max(-1.0, state.sentiment - 0.05)
-            return -0.08
+        if not task.get("requires_clarification"):
+            state.sentiment = max(-1.0, state.sentiment - 0.04)
+            return -0.06
 
-        state.sentiment = max(-1.0, state.sentiment - 0.03)
-        return -0.05
+        if state.asked_clarification:
+            return -0.04
 
-    def _handle_respond(self, action: Action) -> Tuple[float, bool]:
+        if "?" in action.content or any(
+            w in content for w in ("which", "what", "staging", "prod", "environment", "scope", "blast", "where")
+        ):
+            state.asked_clarification = True
+            state.sentiment = min(1.0, state.sentiment + 0.1)
+            return 0.17
+
+        state.sentiment = max(-1.0, state.sentiment - 0.06)
+        return -0.09
+
+    def _handle_propose_fix(self, action: Action) -> Tuple[float, bool]:
         state = self.current_state
         task = self.current_task
+        assert state is not None and task is not None
         content = action.content.lower()
 
-        if not state.classification_correct:
+        if not state.diagnosis_correct:
+            state.sentiment = max(-1.0, state.sentiment - 0.08)
+            return -0.16, False
+
+        markers: List[str] = task.get("valid_fix_markers", [])
+        merged = set(state.matched_fix_markers)
+        for m in markers:
+            if m.lower() in content:
+                merged.add(m)
+        state.matched_fix_markers = sorted(merged)
+
+        coverage = len(state.matched_fix_markers) / len(markers) if markers else 1.0
+        state.sentiment = min(1.0, state.sentiment + 0.08 * coverage)
+
+        if coverage >= 1.0:
+            state.fix_proposed = True
+            return 0.18 + 0.12 * coverage, False
+
+        return -0.04 + 0.14 * coverage, False
+
+    def _handle_apply_fix(self, action: Action) -> Tuple[float, bool]:
+        state = self.current_state
+        task = self.current_task
+        assert state is not None and task is not None
+
+        if not state.fix_proposed:
+            state.premature_confirm_attempts += 1
             state.sentiment = max(-1.0, state.sentiment - 0.1)
-            return -0.18, False
+            return -0.17, False
 
-        expected_solutions = task.get("valid_solutions", [])
-        matched = [solution for solution in expected_solutions if solution in content]
-        state.knowledge_used.append(action.content)
+        state.fix_applied = True
+        state.sentiment = min(1.0, state.sentiment + 0.08)
 
-        if matched:
-            merged = set(state.matched_solution_keywords)
-            merged.update(matched)
-            state.matched_solution_keywords = sorted(merged)
-            coverage = len(state.matched_solution_keywords) / len(expected_solutions)
-            state.helpful_response_score = max(
-                state.helpful_response_score,
-                clamp_open_unit_interval(coverage),
-            )
-            state.responded_helpfully = coverage >= (2 / 3) if expected_solutions else True
-            state.sentiment = min(1.0, state.sentiment + 0.2)
-            done = (
-                state.responded_helpfully
-                and not task.get("requires_resolution")
-                and not task.get("requires_escalation")
-            )
-            return 0.12 + (0.28 * coverage), done
+        if not task.get("requires_confirm"):
+            state.resolved = True
+            return 0.22, True
 
-        fallback_match = any(
-            phrase in content
-            for phrase in [
-                "bank hold",
-                "retry",
-                "24 hours",
-                "freeze card",
-                "recent orders",
-                "password",
-            ]
-        )
-        if fallback_match:
-            state.helpful_response_score = max(state.helpful_response_score, 0.34)
-            state.sentiment = min(1.0, state.sentiment + 0.05)
-            return 0.08, False
+        return 0.14, False
 
-        state.sentiment = max(-1.0, state.sentiment - 0.12)
-        return -0.15, False
-
-    def _handle_resolve(self) -> Tuple[float, bool]:
+    def _handle_confirm_done(self, action: Action) -> Tuple[float, bool]:
         state = self.current_state
         task = self.current_task
+        assert state is not None and task is not None
 
-        resolution_ready = state.classification_correct and (
-            state.responded_helpfully or not task.get("valid_solutions")
+        if not task.get("requires_confirm"):
+            state.premature_confirm_attempts += 1
+            return -0.08, False
+
+        ready = (
+            state.diagnosis_correct
+            and state.fix_applied
+            and state.fix_proposed
+            and (not task.get("requires_clarification") or state.asked_clarification)
         )
-        if task.get("requires_clarification"):
-            resolution_ready = resolution_ready and state.asked_clarification
-
-        if resolution_ready:
+        if ready:
             state.resolved = True
-            state.sentiment = min(1.0, state.sentiment + 0.15)
-            return 0.35, True
+            state.sentiment = min(1.0, state.sentiment + 0.1)
+            return 0.24, True
 
-        state.premature_resolution_attempts += 1
-        state.sentiment = max(-1.0, state.sentiment - 0.15)
-        return -0.22, False
-
-    def _handle_escalate(self) -> Tuple[float, bool]:
-        state = self.current_state
-        task = self.current_task
-
-        escalation_ready = state.classification_correct and (
-            state.responded_helpfully or not task.get("valid_solutions")
-        )
-        if task.get("requires_clarification"):
-            escalation_ready = escalation_ready and state.asked_clarification
-
-        if task.get("requires_escalation") and escalation_ready:
-            state.resolved = True
-            state.sentiment = min(1.0, state.sentiment + 0.15)
-            return 0.32, True
-
-        if task.get("requires_escalation"):
-            state.premature_resolution_attempts += 1
-            state.sentiment = max(-1.0, state.sentiment - 0.15)
-            return -0.24, False
-
+        state.premature_confirm_attempts += 1
         state.sentiment = max(-1.0, state.sentiment - 0.1)
-        return -0.18, True
+        return -0.14, False
 
-    def _generate_customer_reply(self, action: Action) -> str:
+    def _build_observation(self, feedback: str) -> Observation:
         state = self.current_state
-        task = self.current_task
-
-        if action.action_type == "ask" and task.get("requires_clarification") and state.asked_clarification:
-            return task["clarification_response"]
-
-        if action.action_type == "resolve" and state.resolved:
-            return task.get("resolution_confirmation", "Thanks, the issue looks fixed now.")
-
-        if action.action_type == "escalate" and state.resolved:
-            return task.get("escalation_confirmation", "Thanks, please escalate this case to the specialist team.")
-
-        if action.action_type == "respond" and state.responded_helpfully:
-            return "That sounds useful. I will try those steps now."
-
-        if action.action_type == "classify" and state.classification_correct:
-            return "Yes, that sounds like the problem I am facing."
-
-        if state.sentiment <= -0.1:
-            return "That did not help. Can you be more specific?"
-
-        return "I am still waiting for a concrete next step."
-
-    def _build_observation(self, latest_message: str) -> Observation:
-        state = self.current_state
+        assert state is not None
         return Observation(
-            latest_customer_message=latest_message,
-            conversation_history=state.conversation_history,
+            artifact=state.artifact,
+            latest_feedback=feedback,
+            conversation_history=list(state.conversation_history),
             steps_remaining=max(state.max_steps - state.steps_taken, 0),
             sentiment=round(state.sentiment, 2),
             task_id=state.task_id,
+            available_actions=[
+                "analyze",
+                "ask",
+                "propose_fix",
+                "apply_fix",
+                "confirm_done",
+            ],
         )

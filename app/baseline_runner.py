@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 import requests
 
-from app.env.environment import CustomerSupportEnv
+from app.env.environment import ApiRepairEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action, Observation
@@ -14,43 +14,69 @@ def choose_action(task: Dict, observation: Observation, step_count: int) -> Dict
     task_id = task["id"]
 
     if task_id == "task_1":
+        if step_count == 0:
+            return {
+                "action_type": "analyze",
+                "content": "Body is missing the required qty field for order creation.",
+                "predicted_diagnosis": task["expected_diagnosis"],
+            }
+        if step_count == 1:
+            return {
+                "action_type": "propose_fix",
+                "content": 'Use JSON {"sku":"WIDGET-A1","qty":2} including both "sku" and "qty".',
+            }
         return {
-            "action_type": "classify",
-            "content": "This looks like an account access problem caused by a 2FA device change.",
-            "predicted_issue": task["expected_issue"],
+            "action_type": "apply_fix",
+            "content": "Apply the corrected JSON body to the client and redeploy.",
         }
 
     if task_id == "task_2":
         if step_count == 0:
             return {
-                "action_type": "classify",
-                "content": "This appears to be a payment issue with a possible duplicate charge.",
-                "predicted_issue": task["expected_issue"],
+                "action_type": "analyze",
+                "content": "Search must use POST /v1/orders/search with application/json, not GET with query only.",
+                "predicted_diagnosis": task["expected_diagnosis"],
+            }
+        if step_count == 1:
+            return {
+                "action_type": "propose_fix",
+                "content": (
+                    "Switch to POST /v1/orders/search with Content-Type application/json "
+                    "and a JSON body for filters."
+                ),
             }
         return {
-            "action_type": "respond",
-            "content": "Please check bank hold, avoid repeated retries, and wait 24 hours before retrying.",
+            "action_type": "apply_fix",
+            "content": "Ship the client change and verify 200 from search.",
         }
 
-    if step_count == 0 and task.get("requires_clarification"):
+    if step_count == 0:
         return {
             "action_type": "ask",
-            "content": "Can you share when you noticed the charge, whether the card is still active, and if you recognize the related order?",
+            "content": "Which environment is failing—staging, production, or both?",
         }
     if step_count == 1:
         return {
-            "action_type": "classify",
-            "content": "This looks like a fraud-risk payment case.",
-            "predicted_issue": task["expected_issue"],
+            "action_type": "analyze",
+            "content": "Upstream dependency is failing; treat as upstream_or_ambiguous until scope is confirmed.",
+            "predicted_diagnosis": task["expected_diagnosis"],
         }
     if step_count == 2:
         return {
-            "action_type": "respond",
-            "content": "Please freeze card and review recent orders immediately.",
+            "action_type": "propose_fix",
+            "content": (
+                "Increase client timeout, add retry with backoff, use an idempotency key, "
+                "and verify upstream health before user checkout."
+            ),
+        }
+    if step_count == 3:
+        return {
+            "action_type": "apply_fix",
+            "content": "Roll out client patch and canary upstream checks.",
         }
     return {
-        "action_type": "escalate",
-        "content": "I am escalating this to the fraud and risk team for immediate review.",
+        "action_type": "confirm_done",
+        "content": "Incident mitigated; on-call and upstream owners notified.",
     }
 
 
@@ -69,13 +95,14 @@ def _openai_choose_action(task: Dict, observation: Observation, step_count: int)
         base_url=os.getenv("API_BASE_URL") or None,
     )
     prompt = (
-        "You are a deterministic commerce operations agent operating in a benchmark environment.\n"
-        "Return only JSON with keys: action_type, content, predicted_issue.\n"
-        f"Task difficulty: {task['difficulty']}\n"
-        f"Expected allowed issue labels: payment_issue, account_access, fraud_risk, product_bug\n"
-        f"Current observation: {observation.model_dump_json()}\n"
-        f"Current step index: {step_count}\n"
-        "Prioritize correctness, concise troubleshooting, and only resolve or escalate when the workflow is complete."
+        "You are an API debugging agent in a benchmark environment.\n"
+        "Return only JSON with keys: action_type, content, predicted_diagnosis (optional, for analyze).\n"
+        "action_type must be one of: analyze, ask, propose_fix, apply_fix, confirm_done.\n"
+        f"Task: {task}\n"
+        f"Observation: {observation.model_dump_json()}\n"
+        f"Step: {step_count}\n"
+        "If clarification is required, ask first. Then analyze with predicted_diagnosis. "
+        "Propose concrete fixes; apply_fix after a complete proposal; confirm_done only when required."
     )
 
     response = client.responses.create(
@@ -106,7 +133,7 @@ def run_task_http(task: Dict, base_url: str, use_openai: bool = False) -> Dict:
     done = False
     step_count = 0
 
-    while not done and step_count < task.get("max_steps", 5):
+    while not done and step_count < task.get("max_steps", 8):
         action = None
         if use_openai:
             action = _openai_choose_action(task, observation, step_count)
@@ -138,7 +165,7 @@ def run_all_tasks_http(base_url: str, use_openai: bool = False) -> Dict:
 
 
 def run_all_tasks_local() -> Dict:
-    env = CustomerSupportEnv()
+    env = ApiRepairEnv()
     results = []
 
     for task in TASKS:
@@ -147,7 +174,7 @@ def run_all_tasks_local() -> Dict:
         step_count = 0
         rewards: List[float] = []
 
-        while not done and step_count < task.get("max_steps", 5):
+        while not done and step_count < task.get("max_steps", 8):
             action_payload = choose_action(task, observation, step_count)
             action = Action.model_validate(action_payload)
             observation, reward, done, _ = env.step(action)

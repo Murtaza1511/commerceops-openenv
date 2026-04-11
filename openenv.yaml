@@ -1,5 +1,5 @@
-name: customer-support-env
-description: AI environment for commerce support operations, payment triage, and fraud escalation
+name: apidebug-openenv
+description: OpenEnv benchmark for HTTP/API debugging, structured repair, and deterministic grading
 
 endpoints:
   reset: /reset
@@ -14,17 +14,24 @@ actions:
   properties:
     action_type:
       type: string
-      enum: ["classify", "ask", "respond", "resolve", "escalate"]
+      enum: ["analyze", "ask", "propose_fix", "apply_fix", "confirm_done"]
     content:
       type: string
-    predicted_issue:
+    predicted_diagnosis:
       type: string
-      enum: ["payment_issue", "account_access", "fraud_risk", "product_bug"]
+      enum:
+        [
+          "missing_required_field",
+          "wrong_request_line",
+          "upstream_or_ambiguous",
+        ]
 
 observations:
   type: object
   properties:
-    latest_customer_message:
+    artifact:
+      type: string
+    latest_feedback:
       type: string
     conversation_history:
       type: array

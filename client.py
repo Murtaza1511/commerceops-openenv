@@ -3,7 +3,7 @@ from typing import Any, Dict
 import requests
 
 
-class CommerceOpsClient:
+class ApiDebugClient:
     def __init__(self, base_url: str = "http://127.0.0.1:7860"):
         self.base_url = base_url.rstrip("/")
 

@@ -1,6 +1,7 @@
 import unittest
 
-from app.env.environment import CustomerSupportEnv
+from app.baseline_runner import choose_action
+from app.env.environment import ApiRepairEnv
 from app.env.grader import _clamp_task_score, grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
@@ -8,75 +9,56 @@ from app.models.schemas import Action
 
 class EnvironmentTests(unittest.TestCase):
     def setUp(self):
-        self.env = CustomerSupportEnv()
+        self.env = ApiRepairEnv()
 
-    def test_easy_task_finishes_after_correct_classification(self):
-        task = next(task for task in TASKS if task["id"] == "task_1")
-        self.env.reset_with_task(task)
-
-        observation, reward, done, _ = self.env.step(
-            Action(
-                action_type="classify",
-                content="This is an account access issue caused by a 2FA device problem.",
-                predicted_issue="account_access",
-            )
-        )
+    def test_easy_task_completes_with_baseline_policy(self):
+        task = next(t for t in TASKS if t["id"] == "task_1")
+        observation = self.env.reset_with_task(task)
+        done = False
+        step_count = 0
+        while not done and step_count < task.get("max_steps", 8):
+            payload = choose_action(task, observation, step_count)
+            observation, _, done, _ = self.env.step(Action.model_validate(payload))
+            step_count += 1
 
         self.assertTrue(done)
-        self.assertGreater(reward.score, 0)
-        self.assertEqual(observation.task_id, "task_1")
+        self.assertTrue(self.env.state().resolved)
+        score = grade_task(self.env.state(), task)
+        self.assertGreaterEqual(score, 0.85)
 
-    def test_hard_task_requires_clarification_before_resolution(self):
-        task = next(task for task in TASKS if task["id"] == "task_3")
+    def test_hard_task_rejects_confirm_before_clarification(self):
+        task = next(t for t in TASKS if t["id"] == "task_3")
         self.env.reset_with_task(task)
 
-        _, _, _, _ = self.env.step(
+        self.env.step(
             Action(
-                action_type="classify",
-                content="This seems like a fraud risk.",
-                predicted_issue="fraud_risk",
+                action_type="confirm_done",
+                content="Closing without context.",
             )
         )
-        _, reward, done, _ = self.env.step(
-            Action(
-                action_type="escalate",
-                content="Sending this to the fraud team now.",
-            )
-        )
-
-        self.assertFalse(done)
-        self.assertGreater(reward.score, 0.0)
-        self.assertLess(reward.score, 1.0)
+        self.assertFalse(self.env.state().resolved)
 
     def test_grader_rewards_complete_medium_workflow(self):
-        task = next(task for task in TASKS if task["id"] == "task_2")
-        self.env.reset_with_task(task)
-
-        self.env.step(
-            Action(
-                action_type="classify",
-                content="This is a payment failure.",
-                predicted_issue="payment_issue",
-            )
-        )
-        self.env.step(
-            Action(
-                action_type="respond",
-                content="Please check bank hold, avoid repeated retries, and wait 24 hours before retrying.",
-            )
-        )
+        task = next(t for t in TASKS if t["id"] == "task_2")
+        observation = self.env.reset_with_task(task)
+        done = False
+        step_count = 0
+        while not done and step_count < task.get("max_steps", 8):
+            payload = choose_action(task, observation, step_count)
+            observation, _, done, _ = self.env.step(Action.model_validate(payload))
+            step_count += 1
 
         score = grade_task(self.env.state(), task)
-        self.assertGreaterEqual(score, 0.99)
+        self.assertGreaterEqual(score, 0.85)
 
     def test_step_reward_is_normalized_to_strict_open_interval(self):
-        task = next(task for task in TASKS if task["id"] == "task_3")
+        task = next(t for t in TASKS if t["id"] == "task_3")
         self.env.reset_with_task(task)
 
         _, reward, _, _ = self.env.step(
             Action(
-                action_type="escalate",
-                content="Escalating immediately without clarification.",
+                action_type="confirm_done",
+                content="Too early.",
             )
         )
 
@@ -84,14 +66,12 @@ class EnvironmentTests(unittest.TestCase):
         self.assertLess(reward.score, 1.0)
 
     def test_all_task_scores_stay_strictly_inside_zero_one(self):
-        from app.baseline_runner import choose_action
-
         for task in TASKS:
             observation = self.env.reset_with_task(task)
             done = False
             step_count = 0
 
-            while not done and step_count < task.get("max_steps", 5):
+            while not done and step_count < task.get("max_steps", 8):
                 action = Action.model_validate(choose_action(task, observation, step_count))
                 observation, _, done, _ = self.env.step(action)
                 step_count += 1

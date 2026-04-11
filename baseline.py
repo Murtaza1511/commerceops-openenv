@@ -4,7 +4,7 @@ BASE_URL = "http://127.0.0.1:7860"
 
 
 def run_baseline():
-    summary = run_all_tasks_http(BASE_URL, use_openai=True)
+    summary = run_all_tasks_http(BASE_URL, use_openai=False)
 
     print("\n🚀 Running Baseline Across All Tasks\n")
     for item in summary["results"]:

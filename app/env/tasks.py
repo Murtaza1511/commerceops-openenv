@@ -1,51 +1,57 @@
 TASKS = [
     {
         "id": "task_1",
-        "name": "Merchant Account Recovery",
-        "description": "Classify a seller dashboard lockout caused by a 2FA device change.",
+        "name": "Missing JSON field",
+        "description": "POST body omits a required field; fix the JSON payload.",
         "difficulty": "easy",
-        "query": "I changed phones and now I cannot log into the seller dashboard because the OTP is going to my old device.",
-        "expected_issue": "account_access",
-        "valid_solutions": [],
-        "requires_resolution": False,
-        "requires_escalation": False,
+        "artifact": (
+            "POST /v1/orders HTTP/1.1\n"
+            "Host: api.example.com\n"
+            "Content-Type: application/json\n\n"
+            '{"sku":"WIDGET-A1"}'
+        ),
+        "expected_diagnosis": "missing_required_field",
+        "valid_fix_markers": ['"qty"', '"sku"'],
         "requires_clarification": False,
-        "max_steps": 3,
+        "requires_confirm": False,
+        "max_steps": 5,
+        "clarification_response": "",
     },
     {
         "id": "task_2",
-        "name": "Duplicate Charge Triage",
-        "description": "Identify a checkout payment issue and recommend safe next steps for a suspected duplicate charge.",
+        "name": "Wrong method and path",
+        "description": "Client uses GET with query instead of POST to search with JSON body.",
         "difficulty": "medium",
-        "query": "My card was charged twice after I retried checkout and I am worried I will be billed again.",
-        "expected_issue": "payment_issue",
-        "valid_solutions": [
-            "check bank hold",
-            "avoid repeated retries",
-            "wait 24 hours before retrying",
-        ],
-        "requires_resolution": False,
-        "requires_escalation": False,
+        "artifact": (
+            "GET /v1/orders?page=1 HTTP/1.1\n"
+            "Host: api.example.com\n"
+            "Accept: application/json"
+        ),
+        "expected_diagnosis": "wrong_request_line",
+        "valid_fix_markers": ["post", "/v1/orders/search", "application/json"],
         "requires_clarification": False,
-        "max_steps": 4,
+        "requires_confirm": False,
+        "max_steps": 6,
+        "clarification_response": "",
     },
     {
         "id": "task_3",
-        "name": "Unauthorized Payment Escalation",
-        "description": "Handle a high-risk payment complaint by clarifying the signal, classifying fraud, advising immediate safety steps, and escalating to the fraud team.",
+        "name": "Ambiguous upstream failure",
+        "description": "502 with unclear blast radius; clarify environment, then stabilize client and escalate monitoring.",
         "difficulty": "hard",
-        "query": "I just noticed a payment on my account that I do not recognize and I need help immediately.",
-        "expected_issue": "fraud_risk",
-        "valid_solutions": [
-            "freeze card",
-            "review recent orders",
-            "change account password",
-        ],
-        "requires_resolution": False,
-        "requires_escalation": True,
+        "artifact": (
+            "POST /v1/checkout HTTP/1.1\n"
+            "Host: api.example.com\n"
+            "Content-Type: application/json\n\n"
+            '{"cart_id":"c9"}'
+        ),
+        "expected_diagnosis": "upstream_or_ambiguous",
+        "valid_fix_markers": ["timeout", "retry", "idempotency", "upstream"],
         "requires_clarification": True,
-        "clarification_response": "I did not place the order, the card is still active, and the charge showed up 10 minutes ago.",
-        "escalation_confirmation": "Thank you. Please send this to the fraud team right away.",
-        "max_steps": 5,
+        "requires_confirm": True,
+        "max_steps": 8,
+        "clarification_response": (
+            "Only staging is failing; production traffic is healthy. Error started after the load balancer config change."
+        ),
     },
 ]

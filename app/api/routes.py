@@ -3,14 +3,14 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body
 
 from app.baseline_runner import run_all_tasks_local
-from app.env.environment import CustomerSupportEnv
+from app.env.environment import ApiRepairEnv
 from app.env.grader import grade_task
 from app.env.tasks import TASKS
 from app.models.schemas import Action
 from app.scoring import MIN_OPEN_SCORE, clamp_open_unit_interval, sanitize_score_fields
 
 router = APIRouter()
-env = CustomerSupportEnv()
+env = ApiRepairEnv()
 env.reset_with_task(TASKS[0])
 
 
@@ -18,7 +18,7 @@ env.reset_with_task(TASKS[0])
 def index():
     return {
         "status": "ok",
-        "service": "commerceops-openenv",
+        "service": "apidebug-openenv",
         "docs": "/docs",
         "health": "/health",
     }
@@ -28,7 +28,7 @@ def index():
 def health():
     return {
         "status": "ok",
-        "service": "commerceops-openenv",
+        "service": "apidebug-openenv",
     }
 
 

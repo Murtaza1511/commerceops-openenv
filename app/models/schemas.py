@@ -2,71 +2,63 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# ACTION MODEL
 
 class Action(BaseModel):
     action_type: Literal[
-        "classify",
+        "analyze",
         "ask",
-        "respond",
-        "resolve",
-        "escalate",
-    ] = Field(..., description="Type of action taken by the agent.")
+        "propose_fix",
+        "apply_fix",
+        "confirm_done",
+    ] = Field(..., description="Type of action in the API repair episode.")
 
-    content: str = Field(..., description="Text content of the action")
+    content: str = Field(..., description="Text: diagnosis notes, question, proposed fix, or confirmation.")
 
-    predicted_issue: Optional[Literal[
-        "payment_issue",
-        "account_access",
-        "fraud_risk",
-        "product_bug"
-    ]] = Field(
-        None,
-        description="Predicted issue when classifying"
-    )
+    predicted_diagnosis: Optional[
+        Literal[
+            "missing_required_field",
+            "wrong_request_line",
+            "upstream_or_ambiguous",
+        ]
+    ] = Field(None, description="Root-cause label when action_type is analyze.")
 
-    # Observation Model
 
 class Observation(BaseModel):
-    latest_customer_message: str
+    artifact: str = Field(..., description="Broken HTTP request or client snippet under repair.")
+    latest_feedback: str = Field(..., description="Latest simulator or server feedback line.")
     conversation_history: List[str]
     steps_remaining: int
-    sentiment: float
+    sentiment: float = 0.0
     task_id: Optional[str] = None
     available_actions: List[str] = Field(
         default_factory=lambda: [
-            "classify",
+            "analyze",
             "ask",
-            "respond",
-            "resolve",
-            "escalate",
+            "propose_fix",
+            "apply_fix",
+            "confirm_done",
         ]
     )
 
-# STATE MODEL
 
 class State(BaseModel):
-    ticket_id: str
-    customer_query: str
+    request_id: str
     task_id: Optional[str] = None
-    issue_type: Optional[str] = None
+    artifact: str = ""
     conversation_history: List[str] = Field(default_factory=list)
     sentiment: float = 0.0
+    diagnosis_correct: bool = False
+    diagnosis_attempts: int = 0
+    asked_clarification: bool = False
+    matched_fix_markers: List[str] = Field(default_factory=list)
+    fix_proposed: bool = False
+    fix_applied: bool = False
     resolved: bool = False
     steps_taken: int = 0
-    max_steps: int = 5
-    knowledge_used: List[str] = Field(default_factory=list)
+    max_steps: int = 8
     action_history: List[str] = Field(default_factory=list)
-    matched_solution_keywords: List[str] = Field(default_factory=list)
-    classification_correct: bool = False
-    classification_attempts: int = 0
-    asked_clarification: bool = False
-    responded_helpfully: bool = False
-    helpful_response_score: float = Field(default=0.01, gt=0.0, lt=1.0)
-    premature_resolution_attempts: int = 0
+    premature_confirm_attempts: int = 0
 
-
-# REWARD MODEL
 
 class Reward(BaseModel):
     score: float = Field(..., gt=0.0, lt=1.0)

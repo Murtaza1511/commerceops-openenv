@@ -1,123 +1,69 @@
 ---
-title: Commerceops Openenv
-emoji: 🏆
-colorFrom: purple
-colorTo: green
+title: ApiDebug OpenEnv
+emoji: 🔧
+colorFrom: blue
+colorTo: slate
 sdk: docker
 pinned: false
 license: mit
-short_description: 'OpenEnv benchmark for commerce support, payment triage, and '
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
-
----
-title: CommerceOps OpenEnv
-short_description: OpenEnv benchmark for commerce support, payment triage, and fraud escalation
-sdk: docker
+short_description: OpenEnv benchmark for HTTP/API debugging and deterministic repair grading
 python_version: "3.11"
 app_port: 7860
 suggested_hardware: cpu-basic
 ---
 
-# CommerceOps OpenEnv
+# ApiDebug OpenEnv
 
-CommerceOps OpenEnv is a benchmark environment for evaluating AI agents on realistic commerce support workflows. Instead of testing generic conversation ability, it measures whether an agent can follow structured operational workflows such as account recovery, duplicate-charge triage, and fraud escalation.
+ApiDebug OpenEnv evaluates AI agents on **structured API debugging and repair**: reading HTTP-shaped artifacts, diagnosing root causes, proposing fixes with required details, applying patches, and confirming closure when policy demands it. Scoring is **deterministic** (diagnosis match, clarification when required, fix marker coverage, clean resolution).
 
-The project is designed for the Scaler School of Technology x Meta PyTorch OpenEnv Hackathon Round 1 requirements: a real-world environment, typed models, multiple tasks, deterministic grading, shaped rewards, a root `inference.py`, Docker packaging, and deployability to Hugging Face Spaces.
+Built for the Scaler × Meta PyTorch OpenEnv Hackathon: typed Pydantic models, **3+** tasks (easy → hard), shaped step rewards, `/grader`, root `inference.py`, Docker, and Hugging Face Spaces.
 
-## Why this project
+## Evaluation methodology
 
-Commerce support is a strong benchmark setting because it combines:
-
-- customer communication
-- issue classification
-- workflow sequencing
-- safety-sensitive decision making
-- escalation judgment
-
-This environment is intentionally not a toy chat app. The agent is expected to classify problems correctly, ask for clarification when needed, provide useful next steps, and escalate only when the workflow requires it.
+- **`/baseline`** and `baseline.py` run a **scripted policy** (`choose_action` in [`app/baseline_runner.py`](app/baseline_runner.py)) for regression and sanity checks.
+- **`inference.py`** is the **submission agent**: it calls the configured chat model and only **falls back** to the scripted policy if the model returns invalid JSON or fails validation—so runs stay stable without oracle-style comparison to the baseline on every step.
 
 ## Benchmark tasks
 
-The environment currently includes three tasks with increasing difficulty.
+1. **Missing JSON field** (easy): invalid body; diagnose `missing_required_field`, propose a body containing required markers, `apply_fix`.
+2. **Wrong request line** (medium): wrong method/path; diagnose `wrong_request_line`, propose POST + search path + JSON content type markers, `apply_fix`.
+3. **Ambiguous upstream** (hard): 502 with unclear blast radius; **ask** for environment scope first, diagnose `upstream_or_ambiguous`, propose remediation markers (timeout, retry, idempotency, upstream), `apply_fix`, then **`confirm_done`**.
 
-### 1. Merchant Account Recovery
+## Environment loop
 
-- Difficulty: easy
-- Goal: identify an account access issue caused by a 2FA device change
-
-### 2. Duplicate Charge Triage
-
-- Difficulty: medium
-- Goal: classify a duplicate payment issue and provide safe next steps
-
-### 3. Unauthorized Payment Escalation
-
-- Difficulty: hard
-- Goal: ask for clarification, classify fraud risk, provide immediate safety guidance, and escalate correctly
-
-## How the environment works
-
-This project follows a standard RL-style environment loop:
-
-1. `reset()` starts a fresh episode for a selected task
-2. the agent sends an `Action`
-3. `step()` updates the internal `State`
-4. the environment returns:
-   - `Observation`
-   - `Reward`
-   - `done`
-   - `info`
-5. the episode continues until completion or max steps
-6. `grader()` computes the final deterministic score
+1. `POST /reset` starts an episode for a task id.
+2. `POST /step` accepts an `Action` (`analyze`, `ask`, `propose_fix`, `apply_fix`, `confirm_done`).
+3. Response includes `observation`, `reward`, `done`, `info`.
+4. `POST /grader` returns the final deterministic score in `(0, 1)`.
 
 ## Project structure
 
-- [app/main.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/main.py): FastAPI app entrypoint
-- [app/api/routes.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/api/routes.py): HTTP routes for the OpenEnv API
-- [app/models/schemas.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/models/schemas.py): Pydantic models for `Action`, `Observation`, `State`, and `Reward`
-- [app/env/tasks.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/env/tasks.py): benchmark task definitions
-- [app/env/environment.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/env/environment.py): core environment logic and reward shaping
-- [app/env/grader.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/env/grader.py): deterministic task scoring
-- [app/baseline_runner.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/app/baseline_runner.py): baseline control loop for local and HTTP evaluation
-- [baseline.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/baseline.py): local baseline runner
-- [inference.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/inference.py): Round 1 submission runner
-- [client.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/client.py): small HTTP client helper
-- [openenv.yaml](/Users/murtazatinwala/Developer/code/python/customer-support-env/openenv.yaml): environment manifest
-- [Dockerfile](/Users/murtazatinwala/Developer/code/python/customer-support-env/Dockerfile): Docker deployment config
+- [`app/main.py`](app/main.py): FastAPI entrypoint
+- [`app/api/routes.py`](app/api/routes.py): OpenEnv HTTP API
+- [`app/models/schemas.py`](app/models/schemas.py): `Action`, `Observation`, `State`, `Reward`
+- [`app/env/tasks.py`](app/env/tasks.py): task definitions
+- [`app/env/environment.py`](app/env/environment.py): `ApiRepairEnv`
+- [`app/env/grader.py`](app/env/grader.py): deterministic grading
+- [`app/baseline_runner.py`](app/baseline_runner.py): baseline loop
+- [`baseline.py`](baseline.py): CLI baseline against local HTTP server
+- [`inference.py`](inference.py): submission runner
+- [`client.py`](client.py): minimal HTTP helper
+- [`openenv.yaml`](openenv.yaml): manifest
+- [`Dockerfile`](Dockerfile): container image
 
 ## API endpoints
 
-The environment exposes the following routes:
-
-- `GET /`
-- `GET /health`
-- `POST /reset`
-- `POST /step`
-- `GET /state`
-- `GET /tasks`
-- `POST /grader`
-- `GET /baseline`
-
-`/tasks` returns both the available tasks and the JSON schema for the `Action` model.
+- `GET /`, `GET /health`
+- `POST /reset`, `POST /step`, `GET /state`
+- `GET /tasks`, `POST /grader`, `GET /grader`, `GET /baseline`
 
 ## Local setup
-
-Create a virtual environment and install dependencies:
 
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
-```
-
-Start the API locally:
-
-```bash
 ./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
-
-Quick checks:
 
 ```bash
 curl http://127.0.0.1:7860/
@@ -125,28 +71,15 @@ curl http://127.0.0.1:7860/health
 curl http://127.0.0.1:7860/tasks
 ```
 
-## Running the baseline
-
-Run the local baseline policy:
+## Baseline
 
 ```bash
 ./venv/bin/python baseline.py
 ```
 
-This runs the built-in policy across all benchmark tasks and prints rewards and final scores.
+(Requires the API running on port 7860 unless you change `BASE_URL` in `baseline.py`.)
 
-## Submission inference script
-
-The root [inference.py](/Users/murtazatinwala/Developer/code/python/customer-support-env/inference.py) is the Round 1 submission entrypoint. It:
-
-- reads `API_BASE_URL`
-- reads `MODEL_NAME`
-- reads `HF_TOKEN`
-- fetches tasks from the environment
-- uses the OpenAI client for action generation
-- emits `[START]`, `[STEP]`, and `[END]` logs
-
-Example local run:
+## Submission inference
 
 ```bash
 API_BASE_URL=https://api.openai.com/v1 \
@@ -158,94 +91,150 @@ ENV_BASE_URL=http://127.0.0.1:7860 \
 
 ## Testing
 
-Run the unit tests:
-
 ```bash
-./venv/bin/python -m unittest test_models.py test_env.py test_api.py
+./venv/bin/python -m unittest test_models.py test_env.py test_api.py test_inference.py
 ```
-
-Before submission, also verify:
-
-- the root route returns HTTP `200`
-- `/health` returns success
-- `/tasks` returns three tasks and the action schema
-- `inference.py` completes end-to-end
-- step rewards stay in the closed range `0.0` to `1.0`
-- final task scores and aggregate score stay strictly inside `(0, 1)`
 
 ## Docker
 
-Build the image:
-
 ```bash
-docker build -t commerceops-openenv .
+docker build -t apidebug-openenv .
+docker run -p 7860:7860 apidebug-openenv
 ```
 
-Run it:
+The [`.dockerignore`](.dockerignore) file excludes virtualenvs, `.git`, and caches so builds stay smaller and faster.
+
+---
+
+## Step-by-step: Hugging Face Space and resubmit
+
+Do these in order on your machine and in the browser.
+
+### Step 1 — Confirm the project works locally
 
 ```bash
-docker run -p 7860:7860 commerceops-openenv
+cd /path/to/customer-support-env
+./venv/bin/python -m unittest test_models.py test_env.py test_api.py test_inference.py
+docker build -t apidebug-openenv .
 ```
 
-Then test:
+Optional smoke test:
 
 ```bash
-curl http://127.0.0.1:7860/
-curl http://127.0.0.1:7860/health
-curl http://127.0.0.1:7860/tasks
+docker run --rm -d -p 7860:7860 --name apidebug-smoke apidebug-openenv
+curl -s http://127.0.0.1:7860/health
+docker stop apidebug-smoke
 ```
 
-## Hugging Face Spaces deployment
+### Step 2 — Push this repository to GitHub (if it is not already)
 
-This repository is configured for a Docker Space.
+- Create a repo or use an existing one.
+- Push your branch (e.g. `main`) so Hugging Face can build from it, **or** use `git push` directly to Hugging Face (see Step 3).
 
-Recommended Space settings:
+### Step 3 — Create or open a Hugging Face Docker Space
 
-- SDK: `Docker`
-- Visibility: `Public`
-- Hardware: `CPU Basic`
-- Port: `7860`
+1. Go to [Hugging Face Spaces](https://huggingface.co/spaces) → **Create new Space**.
+2. Choose **Docker** as the SDK, set **port** to **7860**, visibility **Public** (required for many hackathon checks).
+3. **Connect** the Space to your GitHub repository *or* add the Space as a remote and push:
 
-After creating the Space, push this repository to:
+   ```bash
+   git remote add hf https://huggingface.co/spaces/<your-username>/<your-space-name>
+   git push hf main
+   ```
+
+4. Wait until the Space **build** finishes (Build logs should show success).
+
+### Step 4 — Add secrets (never commit keys)
+
+In the Space: **Settings → Secrets and variables → Secrets**, add:
+
+| Name | Example value |
+|------|----------------|
+| `HF_TOKEN` | Your LLM API key (used by `inference.py` as `api_key`) |
+| `API_BASE_URL` | `https://api.openai.com/v1` (or your provider’s base URL) |
+| `MODEL_NAME` | `gpt-4.1-mini` (or the model id your provider expects) |
+
+`ENV_BASE_URL` is only needed when you run `inference.py` **pointing at** the Space from your laptop; the Space itself already serves the app on port 7860.
+
+### Step 5 — Verify the deployed Space
+
+Replace `<user>` and `<space>` with yours:
 
 ```bash
-https://huggingface.co/spaces/<your-username>/<your-space-name>
+curl -sS "https://<user>-<space>.hf.space/" | head -c 300
+curl -sS "https://<user>-<space>.hf.space/health"
+curl -sS "https://<user>-<space>.hf.space/tasks" | head -c 500
 ```
 
-Add these runtime secrets:
+Some Spaces use `hf.space` hostnames; use the **exact** URL shown on your Space page. You want HTTP **200** and JSON mentioning `apidebug-openenv`.
 
-- `API_BASE_URL`
-- `MODEL_NAME`
-- `HF_TOKEN`
-
-Then verify the deployed Space URL:
+### Step 6 — Run `inference.py` against the live Space (from your laptop)
 
 ```bash
-curl https://<your-space>.hf.space/
-curl https://<your-space>.hf.space/health
-curl https://<your-space>.hf.space/tasks
+export ENV_BASE_URL="https://<your-space-url>"   # no trailing slash, or try as shown on HF
+export API_BASE_URL="https://api.openai.com/v1"
+export MODEL_NAME="gpt-4.1-mini"
+export HF_TOKEN="sk-..."   # or paste from your secret store
+
+./venv/bin/python inference.py
 ```
 
-## Final submission checklist
+You should see `[START]`, `[STEP]`, `[END]`, and `[RESULTS]` with scores strictly between 0 and 1.
 
-Before submitting the Space URL on the hackathon dashboard, confirm:
+### Step 7 — Resubmit on the hackathon dashboard
 
-- the Space is public
-- the Space finishes building successfully
-- the root Space URL returns HTTP `200`
-- `inference.py` works against the deployed Space
-- the repository contains `openenv.yaml`, `Dockerfile`, and root `inference.py`
-- the README clearly explains the project and how to run it
+1. Open the [Scaler hackathon dashboard](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/dashboard).
+2. Submit or update your entry with the **public Space URL** and any **repository link** the form asks for.
+3. Submit **before** the organizer’s deadline.
 
-## Notes
+### Step 8 — If something fails
 
-- If you use an OpenAI API key, store it as a Hugging Face Space secret
-- Do not expose your API key in terminal screenshots, commits, or logs
-- If an LLM response is malformed, the submission runner falls back to a benchmark-safe policy so the run remains stable
+- **Build fails:** read the Space build log; fix `Dockerfile` / `requirements.txt` locally, push again.
+- **`inference.py` errors:** confirm secrets exist, `ENV_BASE_URL` matches the live Space, and the model API is reachable from your network.
+- **Discord / troubleshooting:** use the links in the organizer email.
+
+## Submission checklist
+
+- Public Space builds; `/` returns HTTP 200.
+- Repo includes `openenv.yaml`, `Dockerfile`, root `inference.py`.
+- Do not commit API keys; use Space secrets only.
+
+## Renaming the GitHub repository and Hugging Face Space
+
+Do this **after** a successful push, when you want URLs to match the ApiDebug project (example new name: `apidebug-openenv`).
+
+### GitHub
+
+1. Open the repo on GitHub → **Settings** → **General** → **Repository name**.
+2. Rename (e.g. `commerceops-openenv` → `apidebug-openenv`) and confirm.
+3. On your computer, point `github` at the new URL:
+
+   ```bash
+   git remote set-url github https://github.com/Murtaza1511/apidebug-openenv.git
+   git fetch github
+   ```
+
+   Replace `Murtaza1511` / `apidebug-openenv` if your username or chosen name differs.
+
+### Hugging Face Space
+
+1. Open the Space → **Settings** (gear) → change the **Space name** (e.g. `apidebug-openenv`). Save.
+2. Your Space URL becomes `https://huggingface.co/spaces/<user>/<new-space-name>`.
+3. Update the `origin` remote:
+
+   ```bash
+   git remote set-url origin https://huggingface.co/spaces/Murtaza786/apidebug-openenv
+   git fetch origin
+   ```
+
+   Replace `Murtaza786` and the space name with yours.
+
+4. Update any **hackathon dashboard** links, **README** bookmarks, and **`ENV_BASE_URL`** if you hardcoded the old Space URL.
+
+GitHub and Hugging Face keep **redirects** from old names for a while, but you should use the new URLs everywhere going forward.
 
 ## References
 
 - [Scaler OpenEnv Hackathon Dashboard](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/dashboard)
-- [Meta PyTorch OpenEnv Hackathon Overview](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon)
-- [Hugging Face Spaces Overview](https://huggingface.co/docs/hub/en/spaces-overview)
 - [Hugging Face Docker Spaces](https://huggingface.co/docs/hub/en/spaces-sdks-docker)
+- [Meta PyTorch OpenEnv](https://github.com/meta-pytorch/OpenEnv)
